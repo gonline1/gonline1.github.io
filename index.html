@@ -1,0 +1,278 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Game Hub — Embed & Host Friendly</title>
+<style>
+  :root{
+    --bg:#0b1220; --panel:#071827; --accent:#4ade80; --muted:#9aa6b2; --text:#eaf6ff;
+    --radius:12px;
+  }
+  *{box-sizing:border-box}
+  body{ margin:0; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial; background:linear-gradient(180deg,#041022,#071427); color:var(--text); display:flex; justify-content:center; padding:28px; min-height:100vh}
+  .wrap{ width:100%; max-width:1100px; display:grid; grid-template-columns:300px 1fr; gap:20px; }
+  header{ grid-column:1/-1; display:flex; align-items:center; gap:12px; margin-bottom:6px}
+  h1{ margin:0; font-size:20px }
+  .left{ background:var(--panel); padding:14px; border-radius:var(--radius); box-shadow:0 10px 30px rgba(0,0,0,.5); min-height:520px }
+  .right{ background:var(--panel); padding:14px; border-radius:var(--radius); box-shadow:0 10px 30px rgba(0,0,0,.5); min-height:520px; display:flex; flex-direction:column; }
+  .section-title{ color:var(--muted); font-size:13px; margin-bottom:8px }
+  .input{ width:100%; padding:10px; border-radius:8px; border:1px solid rgba(255,255,255,0.03); background:transparent; color:inherit; margin-bottom:8px }
+  .btn{ background:transparent; border:1px solid rgba(255,255,255,0.04); padding:8px 12px; border-radius:10px; color:var(--muted); cursor:pointer }
+  .btn.primary{ border-color:rgba(74,222,128,0.14); color:var(--accent) }
+  .games{ display:flex; flex-direction:column; gap:8px; max-height:300px; overflow:auto; margin-bottom:10px }
+  .game-item{ padding:8px; border-radius:8px; background:rgba(255,255,255,0.02); cursor:pointer; display:flex; justify-content:space-between; align-items:center; }
+  .game-item.active{ outline:2px solid rgba(74,222,128,0.08) }
+  #gameContainer{ flex:1; display:flex; flex-direction:column }
+  iframe{ width:100%; height:100%; border:none; border-radius:10px; background:#000; flex:1 }
+  .controls{ display:flex; gap:8px; align-items:center; margin-top:10px }
+  .muted{ color:var(--muted); font-size:13px }
+  footer{ grid-column:1/-1; color:var(--muted); text-align:center; font-size:13px; margin-top:12px }
+  @media (max-width:900px){ .wrap{ grid-template-columns:1fr } .left{ order:2 } .right{ order:1 } }
+</style>
+</head>
+<body>
+  <div class="wrap" role="application">
+    <header>
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="6" fill="#071827"/><path d="M6 9h12M6 15h8" stroke="#4ade80" stroke-width="1.6" stroke-linecap="round"/></svg>
+      <div>
+        <h1>Game Hub — Game Container</h1>
+        <div class="muted">Embed allowed HTML5 games or host your own under <span style="color:var(--accent)">/games/</span></div>
+      </div>
+    </header>
+
+    <aside class="left" aria-label="Saved games & controls">
+      <div class="section-title">Saved Games</div>
+      <div class="games" id="gamesList" role="list"></div>
+
+      <div style="margin-top:10px">
+        <input id="newTitle" class="input" placeholder="Game title (required)">
+        <input id="newUrl" class="input" placeholder="Game URL (https://...) (required)">
+        <div style="display:flex; gap:8px">
+          <button id="saveBtn" class="btn primary">Save</button>
+          <button id="removeBtn" class="btn" title="Remove selected">Remove</button>
+          <button id="resetBtn" class="btn" title="Reset to defaults">Reset</button>
+        </div>
+      </div>
+
+      <div style="margin-top:12px">
+        <div class="section-title">Whitelist request (optional)</div>
+        <div class="muted" style="font-size:13px">
+          If your school blocks a site you need for class, copy the text below and send to your IT/admin (click copy).
+        </div>
+        <textarea id="whitelistText" style="width:100%;height:88px;margin-top:8px;border-radius:8px;padding:8px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:inherit;font-size:13px">
+Hello IT team,
+
+Please review this educational/game demo site for classroom use:
+Site: [PASTE HOSTED URL HERE]
+Purpose: student project / educational demo
+If acceptable, please whitelist the domain for school devices.
+
+Thanks,
+[Your name or teacher]
+        </textarea>
+        <div style="display:flex; gap:8px; margin-top:8px">
+          <button id="copyWhitelist" class="btn">Copy text</button>
+        </div>
+      </div>
+    </aside>
+
+    <main class="right" aria-label="Game player area">
+      <div style="display:flex; gap:12px; align-items:center; margin-bottom:8px">
+        <div style="flex:1">
+          <input id="urlInput" class="input" placeholder="Enter HTTPS game URL (or pick from left)">
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px">
+          <button id="loadBtn" class="btn primary">Load</button>
+          <button id="openBtn" class="btn">Open in New Tab</button>
+        </div>
+      </div>
+
+      <div id="gameContainer">
+        <!-- Shared game container iframe -->
+        <iframe id="gameFrame" sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock" title="Game container"></iframe>
+      </div>
+
+      <div class="controls">
+        <button id="fullscreenBtn" class="btn">Fullscreen</button>
+        <div class="muted" id="status">No game loaded</div>
+      </div>
+    </main>
+
+    <footer>Host your own open games under a games/ folder if you want them always embeddable (no external frames required).</footer>
+  </div>
+
+<script>
+/* Simple Game Hub (safe & legit)
+ - Save games in localStorage
+ - Single "game container" iframe that loads games dynamically
+ - Fullscreen + Open-in-new-tab fallback
+ - Suggestion text to request whitelisting from IT
+*/
+
+// storage key
+const KEY = 'gamehub_saved_games_v1';
+
+// sample default games (open-source / demo; change as you like)
+const DEFAULTS = [
+  { title: '2048', url: 'https://gabrielecirulli.github.io/2048/' },
+  { title: 'Hextris', url: 'https://hextris.github.io/hextris/' }
+];
+
+let saved = [];
+
+// elements
+const gamesList = document.getElementById('gamesList');
+const newTitle = document.getElementById('newTitle');
+const newUrl = document.getElementById('newUrl');
+const saveBtn = document.getElementById('saveBtn');
+const removeBtn = document.getElementById('removeBtn');
+const resetBtn = document.getElementById('resetBtn');
+const loadBtn = document.getElementById('loadBtn');
+const openBtn = document.getElementById('openBtn');
+const urlInput = document.getElementById('urlInput');
+const gameFrame = document.getElementById('gameFrame');
+const fullscreenBtn = document.getElementById('fullscreenBtn');
+const status = document.getElementById('status');
+const copyWhitelist = document.getElementById('copyWhitelist');
+const whitelistText = document.getElementById('whitelistText');
+
+let selectedIndex = -1;
+
+// load saved or defaults
+function loadSaved(){
+  try{
+    const raw = localStorage.getItem(KEY);
+    if(raw){
+      saved = JSON.parse(raw);
+      if(!Array.isArray(saved) || saved.length === 0){ saved = DEFAULTS.slice(); }
+    } else {
+      saved = DEFAULTS.slice();
+    }
+  } catch(e){ saved = DEFAULTS.slice(); }
+}
+function saveSaved(){
+  localStorage.setItem(KEY, JSON.stringify(saved));
+}
+
+// render list
+function renderList(){
+  gamesList.innerHTML = '';
+  saved.forEach((g,i)=>{
+    const el = document.createElement('div');
+    el.className = 'game-item';
+    if(i === selectedIndex) el.classList.add('active');
+    el.innerHTML = `<div style="flex:1">${escapeHtml(g.title)}</div><div style="font-size:12px;color:${getComputedStyle(document.documentElement).getPropertyValue('--muted')};">${shorten(g.url)}</div>`;
+    el.addEventListener('click', ()=> {
+      selectedIndex = i;
+      urlInput.value = g.url;
+      highlight();
+    });
+    el.addEventListener('dblclick', ()=> {
+      // double-click loads immediately
+      loadGame(g.url, g.title);
+    });
+    gamesList.appendChild(el);
+  });
+}
+
+// highlight selected
+function highlight(){
+  Array.from(gamesList.children).forEach((c, idx)=>{
+    c.classList.toggle('active', idx === selectedIndex);
+  });
+}
+
+// helpers
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, (m)=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
+function shorten(u){ try{ return new URL(u).hostname } catch(e){ return u.slice(0,36); } }
+
+// load / init
+loadSaved();
+renderList();
+
+// actions
+saveBtn.addEventListener('click', ()=>{
+  const t = newTitle.value.trim();
+  const u = newUrl.value.trim();
+  if(!t || !u){ alert('Enter both title and URL (HTTPS).'); return; }
+  if(!u.startsWith('https://')){ if(!confirm('URL does not start with https:// . Continue? (not recommended)')) return; }
+  saved.push({ title: t, url: u });
+  saveSaved(); renderList();
+  newTitle.value=''; newUrl.value='';
+  status.textContent = 'Saved game.';
+});
+
+removeBtn.addEventListener('click', ()=>{
+  if(selectedIndex < 0 || selectedIndex >= saved.length){ alert('Select a saved game first.'); return; }
+  if(!confirm('Remove selected saved game?')) return;
+  saved.splice(selectedIndex,1);
+  selectedIndex = -1;
+  saveSaved(); renderList();
+  status.textContent = 'Removed saved game.';
+});
+
+resetBtn.addEventListener('click', ()=>{
+  if(!confirm('Reset to default library? This will overwrite saved list.')) return;
+  saved = DEFAULTS.slice();
+  saveSaved(); renderList();
+  status.textContent = 'Library reset to defaults.';
+});
+
+// load button
+loadBtn.addEventListener('click', ()=>{
+  const u = urlInput.value.trim();
+  if(!u){ alert('Enter a URL to load.'); return; }
+  if(!u.startsWith('http://') && !u.startsWith('https://')){ alert('Enter a valid URL including protocol (https:// recommended).'); return; }
+  loadGame(u, 'Custom Game');
+});
+
+// open in new tab
+openBtn.addEventListener('click', ()=>{
+  const src = gameFrame.src || urlInput.value.trim();
+  if(!src){ alert('No game loaded.'); return; }
+  window.open(src, '_blank', 'noopener');
+});
+
+// fullscreen
+fullscreenBtn.addEventListener('click', ()=>{
+  if(!gameFrame) return;
+  // request fullscreen on iframe element's parent
+  const el = document.getElementById('gameContainer');
+  if(el.requestFullscreen) el.requestFullscreen();
+  else if(el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  else alert('Fullscreen not supported in this browser.');
+});
+
+// copy whitelist text
+copyWhitelist.addEventListener('click', ()=>{
+  whitelistText.select();
+  document.execCommand('copy');
+  status.textContent = 'Whitelist request text copied to clipboard.';
+});
+
+// helper to load game into container
+function loadGame(url, title){
+  // load into iframe; if the target site blocks framing, it will show blank or console error,
+  // so we provide "Open in New Tab" fallback.
+  gameFrame.src = url;
+  status.textContent = 'Loaded: ' + (title || url);
+  // make sure Open in New Tab visible (always visible here)
+  // we don't attempt to bypass frame restrictions.
+}
+
+// small UX: allow pressing Enter in urlInput to load
+urlInput.addEventListener('keydown', (e)=>{ if(e.key === 'Enter'){ loadBtn.click(); } });
+
+// keyboard: press Delete to remove selected
+document.addEventListener('keydown', (e)=> {
+  if(e.key === 'Delete' && selectedIndex >= 0){ removeBtn.click(); }
+});
+
+// initial status
+status.textContent = 'Ready. Double-click a saved game to load it.';
+
+</script>
+</body>
+</html>
