@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="en">
 <head>
@@ -24,8 +23,8 @@
   .games{ display:flex; flex-direction:column; gap:8px; max-height:300px; overflow:auto; margin-bottom:10px }
   .game-item{ padding:8px; border-radius:8px; background:rgba(255,255,255,0.02); cursor:pointer; display:flex; justify-content:space-between; align-items:center; }
   .game-item.active{ outline:2px solid rgba(74,222,128,0.08) }
-  #gameContainer{ flex:1; display:flex; flex-direction:column }
-  iframe{ width:100%; height:100%; border:none; border-radius:10px; background:#000; flex:1 }
+  #gameContainer{ flex:1; display:flex; flex-direction:column; position:relative; }
+  iframe, canvas{ width:100%; height:100%; border:none; border-radius:10px; background:#000; flex:1 }
   .controls{ display:flex; gap:8px; align-items:center; margin-top:10px }
   .muted{ color:var(--muted); font-size:13px }
   footer{ grid-column:1/-1; color:var(--muted); text-align:center; font-size:13px; margin-top:12px }
@@ -38,241 +37,172 @@
       <svg width="36" height="36" viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="6" fill="#071827"/><path d="M6 9h12M6 15h8" stroke="#4ade80" stroke-width="1.6" stroke-linecap="round"/></svg>
       <div>
         <h1>Game Hub — Game Container</h1>
-        <div class="muted">Embed allowed HTML5 games or host your own under <span style="color:var(--accent)">/games/</span></div>
+        <div class="muted">Embed HTML5 games or run your own WebGL demos under <span style="color:var(--accent)">/games/</span></div>
       </div>
     </header>
 
-    <aside class="left" aria-label="Saved games & controls">
+    <aside class="left">
       <div class="section-title">Saved Games</div>
-      <div class="games" id="gamesList" role="list"></div>
+      <div class="games" id="gamesList"></div>
 
       <div style="margin-top:10px">
         <input id="newTitle" class="input" placeholder="Game title (required)">
         <input id="newUrl" class="input" placeholder="Game URL (https://...) (required)">
         <div style="display:flex; gap:8px">
           <button id="saveBtn" class="btn primary">Save</button>
-          <button id="removeBtn" class="btn" title="Remove selected">Remove</button>
-          <button id="resetBtn" class="btn" title="Reset to defaults">Reset</button>
+          <button id="removeBtn" class="btn">Remove</button>
+          <button id="resetBtn" class="btn">Reset</button>
         </div>
       </div>
 
-      <div style="margin-top:12px">
-        <div class="section-title">Whitelist request (optional)</div>
-        <div class="muted" style="font-size:13px">
-          If your school blocks a site you need for class, copy the text below and send to your IT/admin (click copy).
-        </div>
-        <textarea id="whitelistText" style="width:100%;height:88px;margin-top:8px;border-radius:8px;padding:8px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:inherit;font-size:13px">
-Hello IT team,
-
-Please review this educational/game demo site for classroom use:
-Site: [PASTE HOSTED URL HERE]
-Purpose: student project / educational demo
-If acceptable, please whitelist the domain for school devices.
-
-Thanks,
-[Your name or teacher]
-        </textarea>
-        <div style="display:flex; gap:8px; margin-top:8px">
-          <button id="copyWhitelist" class="btn">Copy text</button>
-        </div>
+      <div style="margin-top:16px">
+        <button id="runWebGLDemo" class="btn primary" style="width:100%">▶ Run Local WebGL Demo</button>
       </div>
     </aside>
 
-    <main class="right" aria-label="Game player area">
+    <main class="right">
       <div style="display:flex; gap:12px; align-items:center; margin-bottom:8px">
         <div style="flex:1">
           <input id="urlInput" class="input" placeholder="Enter HTTPS game URL (or pick from left)">
         </div>
         <div style="display:flex; flex-direction:column; gap:8px">
           <button id="loadBtn" class="btn primary">Load</button>
-          <button id="openBtn" class="btn">Open in New Tab</button>
+          <button id="openBtn" class="btn">Open Tab</button>
         </div>
       </div>
 
       <div id="gameContainer">
-        <!-- Shared game container iframe -->
-        <iframe id="gameFrame" sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock" title="Game container"></iframe>
+        <iframe id="gameFrame" sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock"></iframe>
       </div>
 
       <div class="controls">
         <button id="fullscreenBtn" class="btn">Fullscreen</button>
-        <div class="muted" id="status">No game loaded</div>
+        <button id="exitWebGLBtn" class="btn" style="display:none">Exit WebGL</button>
+        <div class="muted" id="status">Ready.</div>
       </div>
     </main>
 
-    <footer>Host your own open games under a games/ folder if you want them always embeddable (no external frames required).</footer>
+    <footer>Host your own open games under a <b>games/</b> folder or integrate WebGL directly.</footer>
   </div>
 
-<script>
-/* Simple Game Hub (safe & legit)
- - Save games in localStorage
- - Single "game container" iframe that loads games dynamically
- - Fullscreen + Open-in-new-tab fallback
- - Suggestion text to request whitelisting from IT
-*/
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.158/build/three.module.js';
 
-// storage key
-const KEY = 'gamehub_saved_games_v1';
-
-// sample default games (open-source / demo; change as you like)
-const DEFAULTS = [
-  { title: '2048', url: 'https://gabrielecirulli.github.io/2048/' },
-  { title: 'Hextris', url: 'https://hextris.github.io/hextris/' }
+const KEY='gamehub_saved_games_v1';
+const DEFAULTS=[
+  {title:'2048',url:'https://gabrielecirulli.github.io/2048/'},
+  {title:'Hextris',url:'https://hextris.github.io/hextris/'}
 ];
-
-let saved = [];
+let saved=[],selectedIndex=-1;
 
 // elements
-const gamesList = document.getElementById('gamesList');
-const newTitle = document.getElementById('newTitle');
-const newUrl = document.getElementById('newUrl');
-const saveBtn = document.getElementById('saveBtn');
-const removeBtn = document.getElementById('removeBtn');
-const resetBtn = document.getElementById('resetBtn');
-const loadBtn = document.getElementById('loadBtn');
-const openBtn = document.getElementById('openBtn');
-const urlInput = document.getElementById('urlInput');
-const gameFrame = document.getElementById('gameFrame');
-const fullscreenBtn = document.getElementById('fullscreenBtn');
-const status = document.getElementById('status');
-const copyWhitelist = document.getElementById('copyWhitelist');
-const whitelistText = document.getElementById('whitelistText');
-
-let selectedIndex = -1;
+const gamesList=document.getElementById('gamesList');
+const newTitle=document.getElementById('newTitle');
+const newUrl=document.getElementById('newUrl');
+const saveBtn=document.getElementById('saveBtn');
+const removeBtn=document.getElementById('removeBtn');
+const resetBtn=document.getElementById('resetBtn');
+const loadBtn=document.getElementById('loadBtn');
+const openBtn=document.getElementById('openBtn');
+const urlInput=document.getElementById('urlInput');
+const gameFrame=document.getElementById('gameFrame');
+const fullscreenBtn=document.getElementById('fullscreenBtn');
+const status=document.getElementById('status');
+const runWebGLDemo=document.getElementById('runWebGLDemo');
+const exitWebGLBtn=document.getElementById('exitWebGLBtn');
+const container=document.getElementById('gameContainer');
 
 // load saved or defaults
-function loadSaved(){
-  try{
-    const raw = localStorage.getItem(KEY);
-    if(raw){
-      saved = JSON.parse(raw);
-      if(!Array.isArray(saved) || saved.length === 0){ saved = DEFAULTS.slice(); }
-    } else {
-      saved = DEFAULTS.slice();
-    }
-  } catch(e){ saved = DEFAULTS.slice(); }
-}
-function saveSaved(){
-  localStorage.setItem(KEY, JSON.stringify(saved));
-}
+function loadSaved(){try{const raw=localStorage.getItem(KEY);saved=raw?JSON.parse(raw):DEFAULTS.slice()}catch(e){saved=DEFAULTS.slice()}}
+function saveSaved(){localStorage.setItem(KEY,JSON.stringify(saved))}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function shorten(u){try{return new URL(u).hostname}catch(e){return u.slice(0,36)}}
 
-// render list
+// render saved list
 function renderList(){
-  gamesList.innerHTML = '';
+  gamesList.innerHTML='';
   saved.forEach((g,i)=>{
-    const el = document.createElement('div');
-    el.className = 'game-item';
-    if(i === selectedIndex) el.classList.add('active');
-    el.innerHTML = `<div style="flex:1">${escapeHtml(g.title)}</div><div style="font-size:12px;color:${getComputedStyle(document.documentElement).getPropertyValue('--muted')};">${shorten(g.url)}</div>`;
-    el.addEventListener('click', ()=> {
-      selectedIndex = i;
-      urlInput.value = g.url;
-      highlight();
-    });
-    el.addEventListener('dblclick', ()=> {
-      // double-click loads immediately
-      loadGame(g.url, g.title);
-    });
+    const el=document.createElement('div');
+    el.className='game-item'+(i===selectedIndex?' active':'');
+    el.innerHTML=`<div style="flex:1">${escapeHtml(g.title)}</div><div style="font-size:12px;color:var(--muted)">${shorten(g.url)}</div>`;
+    el.addEventListener('click',()=>{selectedIndex=i;urlInput.value=g.url;highlight()});
+    el.addEventListener('dblclick',()=>loadGame(g.url,g.title));
     gamesList.appendChild(el);
   });
 }
+function highlight(){Array.from(gamesList.children).forEach((c,i)=>c.classList.toggle('active',i===selectedIndex))}
 
-// highlight selected
-function highlight(){
-  Array.from(gamesList.children).forEach((c, idx)=>{
-    c.classList.toggle('active', idx === selectedIndex);
-  });
+// base actions
+saveBtn.onclick=()=>{
+  const t=newTitle.value.trim(),u=newUrl.value.trim();
+  if(!t||!u){alert('Enter both title and URL');return;}
+  saved.push({title:t,url:u});saveSaved();renderList();newTitle.value=newUrl.value='';status.textContent='Saved.';
+}
+removeBtn.onclick=()=>{if(selectedIndex<0){alert('Select a game');return;}saved.splice(selectedIndex,1);selectedIndex=-1;saveSaved();renderList()}
+resetBtn.onclick=()=>{if(confirm('Reset to defaults?')){saved=DEFAULTS.slice();saveSaved();renderList()}}
+loadBtn.onclick=()=>{const u=urlInput.value.trim();if(!u)return alert('Enter a URL');loadGame(u,'Custom')}
+openBtn.onclick=()=>{const src=gameFrame.src||urlInput.value.trim();if(src)window.open(src,'_blank')}
+fullscreenBtn.onclick=()=>{container.requestFullscreen?.()}
+function loadGame(url,title){exitWebGLMode();gameFrame.src=url;status.textContent='Loaded: '+(title||url);}
+
+// ----- WEBGL DEMO -----
+let renderer,scene,camera,animating=false;
+runWebGLDemo.onclick=()=>{
+  if(animating)return;
+  gameFrame.style.display='none';
+  exitWebGLBtn.style.display='inline-block';
+  status.textContent='Running local WebGL demo...';
+  const canvas=document.createElement('canvas');
+  container.appendChild(canvas);
+
+  renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  scene=new THREE.Scene();
+  scene.background=new THREE.Color(0x10121a);
+  camera=new THREE.PerspectiveCamera(60,container.clientWidth/container.clientHeight,0.1,100);
+  camera.position.set(0,2,5);
+
+  const cube=new THREE.Mesh(
+    new THREE.BoxGeometry(2,2,2),
+    new THREE.MeshStandardMaterial({color:0x4ade80})
+  );
+  scene.add(cube);
+  scene.add(new THREE.HemisphereLight(0xffffff,0x444444,0.9));
+  const dir=new THREE.DirectionalLight(0xffffff,0.7);
+  dir.position.set(5,5,5);scene.add(dir);
+
+  function resize(){
+    camera.aspect=container.clientWidth/container.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(container.clientWidth,container.clientHeight);
+  }
+  window.addEventListener('resize',resize);
+  resize();
+
+  let last=performance.now();
+  function loop(now){
+    if(!animating)return;
+    const dt=(now-last)/1000;last=now;
+    cube.rotation.x+=dt;cube.rotation.y+=dt*1.2;
+    renderer.render(scene,camera);
+    requestAnimationFrame(loop);
+  }
+  animating=true;requestAnimationFrame(loop);
 }
 
-// helpers
-function escapeHtml(s){ return String(s).replace(/[&<>"']/g, (m)=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
-function shorten(u){ try{ return new URL(u).hostname } catch(e){ return u.slice(0,36); } }
-
-// load / init
-loadSaved();
-renderList();
-
-// actions
-saveBtn.addEventListener('click', ()=>{
-  const t = newTitle.value.trim();
-  const u = newUrl.value.trim();
-  if(!t || !u){ alert('Enter both title and URL (HTTPS).'); return; }
-  if(!u.startsWith('https://')){ if(!confirm('URL does not start with https:// . Continue? (not recommended)')) return; }
-  saved.push({ title: t, url: u });
-  saveSaved(); renderList();
-  newTitle.value=''; newUrl.value='';
-  status.textContent = 'Saved game.';
-});
-
-removeBtn.addEventListener('click', ()=>{
-  if(selectedIndex < 0 || selectedIndex >= saved.length){ alert('Select a saved game first.'); return; }
-  if(!confirm('Remove selected saved game?')) return;
-  saved.splice(selectedIndex,1);
-  selectedIndex = -1;
-  saveSaved(); renderList();
-  status.textContent = 'Removed saved game.';
-});
-
-resetBtn.addEventListener('click', ()=>{
-  if(!confirm('Reset to default library? This will overwrite saved list.')) return;
-  saved = DEFAULTS.slice();
-  saveSaved(); renderList();
-  status.textContent = 'Library reset to defaults.';
-});
-
-// load button
-loadBtn.addEventListener('click', ()=>{
-  const u = urlInput.value.trim();
-  if(!u){ alert('Enter a URL to load.'); return; }
-  if(!u.startsWith('http://') && !u.startsWith('https://')){ alert('Enter a valid URL including protocol (https:// recommended).'); return; }
-  loadGame(u, 'Custom Game');
-});
-
-// open in new tab
-openBtn.addEventListener('click', ()=>{
-  const src = gameFrame.src || urlInput.value.trim();
-  if(!src){ alert('No game loaded.'); return; }
-  window.open(src, '_blank', 'noopener');
-});
-
-// fullscreen
-fullscreenBtn.addEventListener('click', ()=>{
-  if(!gameFrame) return;
-  // request fullscreen on iframe element's parent
-  const el = document.getElementById('gameContainer');
-  if(el.requestFullscreen) el.requestFullscreen();
-  else if(el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-  else alert('Fullscreen not supported in this browser.');
-});
-
-// copy whitelist text
-copyWhitelist.addEventListener('click', ()=>{
-  whitelistText.select();
-  document.execCommand('copy');
-  status.textContent = 'Whitelist request text copied to clipboard.';
-});
-
-// helper to load game into container
-function loadGame(url, title){
-  // load into iframe; if the target site blocks framing, it will show blank or console error,
-  // so we provide "Open in New Tab" fallback.
-  gameFrame.src = url;
-  status.textContent = 'Loaded: ' + (title || url);
-  // make sure Open in New Tab visible (always visible here)
-  // we don't attempt to bypass frame restrictions.
+function exitWebGLMode(){
+  if(!animating)return;
+  animating=false;
+  renderer?.dispose();
+  container.querySelectorAll('canvas').forEach(c=>c.remove());
+  gameFrame.style.display='block';
+  exitWebGLBtn.style.display='none';
+  status.textContent='Exited WebGL demo.';
 }
+exitWebGLBtn.onclick=exitWebGLMode;
 
-// small UX: allow pressing Enter in urlInput to load
-urlInput.addEventListener('keydown', (e)=>{ if(e.key === 'Enter'){ loadBtn.click(); } });
-
-// keyboard: press Delete to remove selected
-document.addEventListener('keydown', (e)=> {
-  if(e.key === 'Delete' && selectedIndex >= 0){ removeBtn.click(); }
-});
-
-// initial status
-status.textContent = 'Ready. Double-click a saved game to load it.';
-
+// init
+loadSaved();renderList();
 </script>
 </body>
 </html>
