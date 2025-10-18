@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Game Hub — Embed & Host Friendly</title>
+<title>Game Hub — Open Source Collection</title>
 <style>
   :root{
     --bg:#0b1220; --panel:#071827; --accent:#4ade80; --muted:#9aa6b2; --text:#eaf6ff;
@@ -24,7 +24,7 @@
   .game-item{ padding:8px; border-radius:8px; background:rgba(255,255,255,0.02); cursor:pointer; display:flex; justify-content:space-between; align-items:center; }
   .game-item.active{ outline:2px solid rgba(74,222,128,0.08) }
   #gameContainer{ flex:1; display:flex; flex-direction:column; position:relative; }
-  iframe, canvas{ width:100%; height:100%; border:none; border-radius:10px; background:#000; flex:1 }
+  iframe{ width:100%; height:100%; border:none; border-radius:10px; background:#000; flex:1 }
   .controls{ display:flex; gap:8px; align-items:center; margin-top:10px }
   .muted{ color:var(--muted); font-size:13px }
   footer{ grid-column:1/-1; color:var(--muted); text-align:center; font-size:13px; margin-top:12px }
@@ -36,13 +36,13 @@
     <header>
       <svg width="36" height="36" viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="6" fill="#071827"/><path d="M6 9h12M6 15h8" stroke="#4ade80" stroke-width="1.6" stroke-linecap="round"/></svg>
       <div>
-        <h1>Game Hub — Game Container</h1>
-        <div class="muted">Embed HTML5 games or run your own WebGL demos under <span style="color:var(--accent)">/games/</span></div>
+        <h1>Game Hub — Open Source Collection</h1>
+        <div class="muted">Play and embed open source HTML5 games.</div>
       </div>
     </header>
 
     <aside class="left">
-      <div class="section-title">Saved Games</div>
+      <div class="section-title">Available Games</div>
       <div class="games" id="gamesList"></div>
 
       <div style="margin-top:10px">
@@ -53,10 +53,6 @@
           <button id="removeBtn" class="btn">Remove</button>
           <button id="resetBtn" class="btn">Reset</button>
         </div>
-      </div>
-
-      <div style="margin-top:16px">
-        <button id="runWebGLDemo" class="btn primary" style="width:100%">▶ Run Local WebGL Demo</button>
       </div>
     </aside>
 
@@ -77,21 +73,22 @@
 
       <div class="controls">
         <button id="fullscreenBtn" class="btn">Fullscreen</button>
-        <button id="exitWebGLBtn" class="btn" style="display:none">Exit WebGL</button>
         <div class="muted" id="status">Ready.</div>
       </div>
     </main>
 
-    <footer>Host your own open games under a <b>games/</b> folder or integrate WebGL directly.</footer>
+    <footer>Enjoy open source classics — add more via the form on the left.</footer>
   </div>
 
 <script type="module">
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.158/build/three.module.js';
-
-const KEY='gamehub_saved_games_v1';
+const KEY='gamehub_saved_games_v2';
 const DEFAULTS=[
   {title:'2048',url:'https://gabrielecirulli.github.io/2048/'},
-  {title:'Hextris',url:'https://hextris.github.io/hextris/'}
+  {title:'Hextris',url:'https://hextris.github.io/hextris/'},
+  {title:'Tetris',url:'https://javalab.org/tetris_en/'},
+  {title:'Pac-Man',url:'https://pacman.cc/'},
+  {title:'Flappy Bird',url:'https://flappybird.io/'},
+  {title:'Asteroids',url:'https://freejsgame.github.io/asteroids/'}
 ];
 let saved=[],selectedIndex=-1;
 
@@ -108,12 +105,13 @@ const urlInput=document.getElementById('urlInput');
 const gameFrame=document.getElementById('gameFrame');
 const fullscreenBtn=document.getElementById('fullscreenBtn');
 const status=document.getElementById('status');
-const runWebGLDemo=document.getElementById('runWebGLDemo');
-const exitWebGLBtn=document.getElementById('exitWebGLBtn');
 const container=document.getElementById('gameContainer');
 
 // load saved or defaults
-function loadSaved(){try{const raw=localStorage.getItem(KEY);saved=raw?JSON.parse(raw):DEFAULTS.slice()}catch(e){saved=DEFAULTS.slice()}}
+function loadSaved(){
+  try{const raw=localStorage.getItem(KEY);saved=raw?JSON.parse(raw):DEFAULTS.slice()}
+  catch(e){saved=DEFAULTS.slice()}
+}
 function saveSaved(){localStorage.setItem(KEY,JSON.stringify(saved))}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function shorten(u){try{return new URL(u).hostname}catch(e){return u.slice(0,36)}}
@@ -143,63 +141,7 @@ resetBtn.onclick=()=>{if(confirm('Reset to defaults?')){saved=DEFAULTS.slice();s
 loadBtn.onclick=()=>{const u=urlInput.value.trim();if(!u)return alert('Enter a URL');loadGame(u,'Custom')}
 openBtn.onclick=()=>{const src=gameFrame.src||urlInput.value.trim();if(src)window.open(src,'_blank')}
 fullscreenBtn.onclick=()=>{container.requestFullscreen?.()}
-function loadGame(url,title){exitWebGLMode();gameFrame.src=url;status.textContent='Loaded: '+(title||url);}
-
-// ----- WEBGL DEMO -----
-let renderer,scene,camera,animating=false;
-runWebGLDemo.onclick=()=>{
-  if(animating)return;
-  gameFrame.style.display='none';
-  exitWebGLBtn.style.display='inline-block';
-  status.textContent='Running local WebGL demo...';
-  const canvas=document.createElement('canvas');
-  container.appendChild(canvas);
-
-  renderer=new THREE.WebGLRenderer({canvas,antialias:true});
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
-  scene=new THREE.Scene();
-  scene.background=new THREE.Color(0x10121a);
-  camera=new THREE.PerspectiveCamera(60,container.clientWidth/container.clientHeight,0.1,100);
-  camera.position.set(0,2,5);
-
-  const cube=new THREE.Mesh(
-    new THREE.BoxGeometry(2,2,2),
-    new THREE.MeshStandardMaterial({color:0x4ade80})
-  );
-  scene.add(cube);
-  scene.add(new THREE.HemisphereLight(0xffffff,0x444444,0.9));
-  const dir=new THREE.DirectionalLight(0xffffff,0.7);
-  dir.position.set(5,5,5);scene.add(dir);
-
-  function resize(){
-    camera.aspect=container.clientWidth/container.clientHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(container.clientWidth,container.clientHeight);
-  }
-  window.addEventListener('resize',resize);
-  resize();
-
-  let last=performance.now();
-  function loop(now){
-    if(!animating)return;
-    const dt=(now-last)/1000;last=now;
-    cube.rotation.x+=dt;cube.rotation.y+=dt*1.2;
-    renderer.render(scene,camera);
-    requestAnimationFrame(loop);
-  }
-  animating=true;requestAnimationFrame(loop);
-}
-
-function exitWebGLMode(){
-  if(!animating)return;
-  animating=false;
-  renderer?.dispose();
-  container.querySelectorAll('canvas').forEach(c=>c.remove());
-  gameFrame.style.display='block';
-  exitWebGLBtn.style.display='none';
-  status.textContent='Exited WebGL demo.';
-}
-exitWebGLBtn.onclick=exitWebGLMode;
+function loadGame(url,title){gameFrame.src=url;status.textContent='Loaded: '+(title||url);}
 
 // init
 loadSaved();renderList();
